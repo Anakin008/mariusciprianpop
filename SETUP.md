@@ -1,117 +1,104 @@
 # Setup — formular contact Marius Ciprian Pop
 
-Formularul trimite datele în două locuri:
-1. **Google Sheet** (stocare) — prin Apps Script Web App
+Formularul scrie în două locuri simultan:
+1. **Google Sheet** (stocare) — prin Google Sheets API + Service Account
 2. **Resend** (notificare email) — către adresele din `NOTIFICATION_RECIPIENTS`
 
-Tot ce trebuie să faci o singură dată.
+Acest document descrie cum să refaci setup-ul de la zero. Dacă totul funcționează deja, îl poți ignora.
 
 ---
 
-## 1. Google Sheet + Apps Script (10 min)
+## 1. Google Cloud — Service Account (o singură dată)
 
-### 1.1 Creează Sheet-ul
-1. Mergi pe https://sheets.new și creează un spreadsheet nou.
-2. Redenumește-l: **Marius Ciprian Pop — Contact Form**.
-3. Redenumește prima foaie (tab-ul de jos) din „Sheet1" → **Submissions**.
+1. https://console.cloud.google.com/projectcreate → creează un proiect nou
+2. Enable **Google Sheets API**: https://console.cloud.google.com/apis/library/sheets.googleapis.com
+3. **APIs & Services → Credentials → + Create Credentials → Service Account**
+   - Name: ex. `mcp-form-writer`
+   - Skip role & user → Done
+4. Click pe service account → tab **Keys** → **Add Key → Create new key → JSON** → se descarcă un `.json`
 
-### 1.2 Pune headerele (rândul 1)
-Scriptul le pune automat la primul submit, dar dacă vrei să le ai de la început, copiază în A1:H1:
+## 2. Google Sheet
 
-| A | B | C | D | E | F | G | H |
-|---|---|---|---|---|---|---|---|
-| Timestamp | Nume | Telefon | Email | Terms Accepted | User Agent | IP | Source |
+Service account-urile Google **nu au Drive storage** — nu pot crea fișiere, doar scrie în sheet-uri existente. Deci tu creezi sheet-ul:
 
-### 1.3 Lipește scriptul Apps Script
-1. În Sheet: **Extensions → Apps Script**.
-2. Se deschide editor. Șterge tot codul default.
-3. Deschide fișierul `apps-script/Code.gs` din acest repo și copiază tot conținutul.
-4. Lipește în editor, apasă **Save (⌘S / Ctrl+S)**.
-5. Dă-i un nume proiectului, ex. „MCP Contact".
+1. https://sheets.new → redenumește-l ex. „Marius Ciprian Pop"
+2. Click **Share** → lipește email-ul service account-ului (din câmpul `client_email` al JSON-ului, ex: `mcp-546@...iam.gserviceaccount.com`) → rol **Editor** → debifează „Notify people" → Share
+3. Copiază URL-ul sheet-ului. ID-ul e partea dintre `/d/` și `/edit` (44 caractere).
 
-### 1.4 Publică scriptul ca Web App
-1. În editor: **Deploy → New deployment**.
-2. Click pe iconița ⚙ (rotiță) lângă „Select type" → alege **Web app**.
-3. Configurează:
-   - **Description**: `MCP contact webhook v1`
-   - **Execute as**: **Me (adresa ta de Gmail)**
-   - **Who has access**: **Anyone**
-4. Click **Deploy**. Prima dată îți cere să autorizezi — accept.
-5. La final vezi **Web app URL**. Arată așa:
-   ```
-   https://script.google.com/macros/s/AKfycbxxxxxxxxxxxxxxxx/exec
-   ```
-6. **Copiază URL-ul**. Acesta e `GOOGLE_SHEET_WEBHOOK_URL`.
+## 3. Resend
 
-> ⚠️ Dacă modifici scriptul mai târziu, trebuie să faci **Manage deployments → Edit → New version → Deploy**. URL-ul rămâne același.
+1. Cont la https://resend.com (free: 100 emailuri/zi, 3000/lună)
+2. **API Keys → Create API Key** cu „Sending access" → copiază cheia (începe cu `re_`)
+3. **Opțional**: verifică un domeniu (ex. `notify.mariusciprianpop.ro`) în Domains → Add Domain → adaugă 3 DNS records → după verificare poți folosi `contact@notify.mariusciprianpop.ro` ca FROM.
 
-### 1.5 Test rapid (opțional)
-Din terminal:
+## 4. Variabile de mediu
+
+### 4.1 Local — `site/.env` (gitignored)
+Copiază [.env.example](.env.example) → `.env` și completează:
 ```bash
-curl -X POST "<URL_de_mai_sus>" \
-  -H "Content-Type: application/json" \
-  -d '{"nume":"Test","telefon":"0700000000","email":"test@test.com","terms_accepted":true,"source":"manual-test","timestamp":"2026-04-23T10:00:00Z"}'
-```
-Dacă vezi `{"ok":true}` și un rând nou în Sheet → e gata.
-
----
-
-## 2. Resend (5 min)
-
-1. Cont la https://resend.com (free tier: 100 emailuri/zi, 3000/lună).
-2. **API Keys → Create API Key**. Permisiuni: `Sending access`. Copiază cheia (începe cu `re_`).
-3. **(Opțional dar recomandat)** Verifică un domeniu propriu în **Domains → Add Domain** (ex. `mariusciprianpop.ro`). Adaugi 3 DNS records la registrar. După ce e verified, poți folosi `contact@mariusciprianpop.ro` ca FROM.
-4. Fără domeniu verificat: folosește `onboarding@resend.dev` — dar doar către adresa cu care te-ai înregistrat la Resend.
-
----
-
-## 3. Variabile de mediu
-
-### Local (dezvoltare)
-Editează `site/.env`:
-```bash
-GOOGLE_SHEET_WEBHOOK_URL=https://script.google.com/macros/s/AKfycbxxxx/exec
-RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+GOOGLE_SERVICE_ACCOUNT_JSON='{...JSON pe o singura linie...}'
+GOOGLE_SHEET_ID=1AbCd...XyZ
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
 NOTIFICATION_RECIPIENTS=marius@example.com,manager@example.com
 FROM_EMAIL=Marius Ciprian Pop <contact@mariusciprianpop.ro>
 ```
 
-### Pe Vercel (producție + preview)
-1. https://vercel.com/dashboard → proiectul `mariusciprianpop` → **Settings → Environment Variables**.
-2. Adaugă fiecare variabilă din lista de mai sus:
-   - Name: `GOOGLE_SHEET_WEBHOOK_URL`, Value: `<URL>`, Environments: **Production**, **Preview**, **Development** (toate)
-   - La fel pentru `RESEND_API_KEY`, `NOTIFICATION_RECIPIENTS`, `FROM_EMAIL`.
-3. **Save**. Variabilele sunt disponibile la deployul următor.
-4. Dacă modifici valorile, trebuie să redeployezi: **Deployments → (ultimul) → ... → Redeploy**.
+**Trucul pentru JSON pe o linie**: în VS Code deschide `.json` descărcat, `Ctrl+A`, apoi `Ctrl+Shift+P` → „Join Lines" → copiază rezultatul între ghilimele simple.
 
----
+### 4.2 Vercel — prin CLI (deja autentificat)
+```bash
+cd site
+# Pentru fiecare variabilă, pe fiecare environment:
+vercel env add GOOGLE_SERVICE_ACCOUNT_JSON production
+vercel env add GOOGLE_SERVICE_ACCOUNT_JSON preview
+vercel env add GOOGLE_SERVICE_ACCOUNT_JSON development
+# ... la fel pentru GOOGLE_SHEET_ID, RESEND_API_KEY, NOTIFICATION_RECIPIENTS, FROM_EMAIL
+```
 
-## 4. Deploy
+Sau alternative:
+- **Vercel Dashboard** → proiectul `mariusciprianpop` → Settings → Environment Variables → Add fiecare variabilă
+- **Push din .env local**: `vercel env pull` descarcă, `vercel env add < .env` nu există nativ — folosește dashboard-ul sau CLI-ul cu fiecare var
 
-Git-flow automat:
+## 5. Bootstrap sheet-ului (headers, formatare)
+
+După ce ai `.env` complet, rulează o dată:
+```bash
+cd site
+npm install
+node scripts/bootstrap-sheet.js
+```
+Asta:
+- Redenumește prima foaie în „Submissions"
+- Scrie cele 8 headere
+- Bold + background gri pe header
+- Frozen row 1
+- Autoresize coloane
+
+## 6. Deploy
+
 ```bash
 cd site
 git add .
-git commit -m "feat: formular contact cu Google Sheets + Resend"
-git push origin main
+git commit -m "feat: contact form"
+git push origin master
 ```
-Vercel prinde push-ul și face build automat. În ~1 minut e live.
+Vercel prinde push-ul automat. ~1 min până e live pe production.
 
-Pentru test înainte de prod: creează un branch, push — Vercel îți generează un preview URL.
+## 7. Test E2E
 
----
+Din terminal:
+```bash
+curl -i -X POST https://www.mariusciprianpop.com/api/contact \
+  -H "Content-Type: application/json" \
+  -d '{"nume":"Test E2E","telefon":"0700000000","email":"test@test.com","terms_accepted":true,"source":"curl-test"}'
+```
 
-## 5. Testare end-to-end
+Aștept-te la:
+- HTTP 200 cu `{"ok":true,"partial":false,"results":{"sheet":"ok","email":"ok"}}`
+- Rând nou în Google Sheet
+- Email în inboxul din `NOTIFICATION_RECIPIENTS`
 
-După deploy + env vars completate:
-1. Intră pe site → scroll la secțiunea contact.
-2. Completează formularul, bifează T&C, submit.
-3. Verifică:
-   - Vezi „Mesajul tău a fost trimis cu succes!" pe pagină.
-   - În Google Sheet apare un rând nou în **Submissions**.
-   - În inboxul tău apare emailul de la Resend.
-
-Dacă ceva nu merge, Vercel → **Deployments → (deploy) → Function Logs** îți arată erorile din `/api/contact`.
+Dacă e `partial:true`, verifică Vercel → Deployments → (deploy) → Runtime Logs pentru eroarea specifică.
 
 ---
 

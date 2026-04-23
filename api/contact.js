@@ -1,4 +1,10 @@
+'use strict';
+
+const { google } = require('googleapis');
+
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+const SHEET_TAB = 'Submissions';
+const SHEET_RANGE = SHEET_TAB + '!A:H';
 
 function escapeHtml(str) {
   return String(str)
@@ -37,34 +43,37 @@ async function parseBody(req) {
   });
 }
 
-async function postToSheet(webhookUrl, payload) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-      signal: controller.signal
-    });
-    const text = await res.text().catch(() => '');
-    if (!res.ok) {
-      throw new Error('Sheet webhook ' + res.status + ': ' + text.slice(0, 200));
-    }
-    return text;
-  } finally {
-    clearTimeout(timer);
-  }
+let cachedSheetsClient = null;
+function getSheetsClient() {
+  if (cachedSheetsClient) return cachedSheetsClient;
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var missing');
+  let sa;
+  try { sa = JSON.parse(raw); } catch (e) { throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON not valid JSON'); }
+  const auth = new google.auth.JWT({
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+  cachedSheetsClient = google.sheets({ version: 'v4', auth });
+  return cachedSheetsClient;
+}
+
+async function appendToSheet(row) {
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId) throw new Error('GOOGLE_SHEET_ID env var missing');
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: sheetId,
+    range: SHEET_RANGE,
+    valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: [row] }
+  });
 }
 
 async function sendEmail({ apiKey, from, to, subject, html, replyTo }) {
-  const body = {
-    from: from,
-    to: to,
-    subject: subject,
-    html: html
-  };
+  const body = { from, to, subject, html };
   if (replyTo) body.reply_to = replyTo;
   const res = await fetch(RESEND_ENDPOINT, {
     method: 'POST',
@@ -122,43 +131,24 @@ module.exports = async (req, res) => {
   const ip = getClientIp(req).slice(0, 60);
   const timestamp = new Date().toISOString();
 
-  const sheetUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
-  const resendKey = process.env.RESEND_API_KEY;
-  const recipientsRaw = process.env.NOTIFICATION_RECIPIENTS || '';
-  const fromEmail = process.env.FROM_EMAIL || 'Marius Ciprian Pop <onboarding@resend.dev>';
-
-  const recipients = recipientsRaw
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const sheetPayload = {
-    timestamp,
-    nume,
-    telefon,
-    email,
-    terms_accepted: termsAccepted,
-    user_agent: userAgent,
-    ip,
-    source
-  };
+  const row = [timestamp, nume, telefon, email, termsAccepted ? 'YES' : 'NO', userAgent, ip, source];
 
   const results = { sheet: null, email: null };
   let hadFailure = false;
 
-  if (sheetUrl) {
-    try {
-      await postToSheet(sheetUrl, sheetPayload);
-      results.sheet = 'ok';
-    } catch (err) {
-      results.sheet = 'failed: ' + err.message;
-      hadFailure = true;
-      console.error('[contact] sheet error:', err);
-    }
-  } else {
-    results.sheet = 'skipped (GOOGLE_SHEET_WEBHOOK_URL not set)';
-    console.warn('[contact] GOOGLE_SHEET_WEBHOOK_URL not set');
+  try {
+    await appendToSheet(row);
+    results.sheet = 'ok';
+  } catch (err) {
+    results.sheet = 'failed: ' + err.message;
+    hadFailure = true;
+    console.error('[contact] sheet error:', err);
   }
+
+  const resendKey = process.env.RESEND_API_KEY;
+  const recipientsRaw = process.env.NOTIFICATION_RECIPIENTS || '';
+  const fromEmail = process.env.FROM_EMAIL || 'Marius Ciprian Pop <onboarding@resend.dev>';
+  const recipients = recipientsRaw.split(',').map(s => s.trim()).filter(Boolean);
 
   if (resendKey && recipients.length > 0) {
     try {
