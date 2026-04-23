@@ -1,0 +1,9 @@
+{
+  "name": "mariusciprianpop-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site oficial Marius Ciprian Pop + formular contact (Google Sheets + Resend)",
+  "engines": {
+    "node": ">=18"
+  }
+}
