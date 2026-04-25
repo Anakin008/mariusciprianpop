@@ -72,8 +72,17 @@ async function appendToSheet(row) {
   });
 }
 
-async function sendEmail({ apiKey, from, to, subject, html, replyTo }) {
+function parseEmailList(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(',')
+    .map(s => s.trim().replace(/^["']+|["']+$/g, '').trim())
+    .filter(Boolean);
+}
+
+async function sendEmail({ apiKey, from, to, bcc, subject, html, replyTo }) {
   const body = { from, to, subject, html };
+  if (Array.isArray(bcc) && bcc.length > 0) body.bcc = bcc;
   if (replyTo) body.reply_to = replyTo;
   const res = await fetch(RESEND_ENDPOINT, {
     method: 'POST',
@@ -146,11 +155,12 @@ module.exports = async (req, res) => {
   }
 
   const resendKey = process.env.RESEND_API_KEY;
-  const recipientsRaw = process.env.NOTIFICATION_RECIPIENTS || '';
   const fromEmail = process.env.FROM_EMAIL || 'Marius Ciprian Pop <onboarding@resend.dev>';
-  const recipients = recipientsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  // Backwards-compat: accept legacy NOTIFICATION_RECIPIENTS as TO if EMAIL_TO unset
+  const toList = parseEmailList(process.env.EMAIL_TO || process.env.NOTIFICATION_RECIPIENTS || '');
+  const bccList = parseEmailList(process.env.EMAIL_TO_BCC || '');
 
-  if (resendKey && recipients.length > 0) {
+  if (resendKey && toList.length > 0) {
     try {
       const html = [
         '<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111;">',
@@ -170,21 +180,22 @@ module.exports = async (req, res) => {
       await sendEmail({
         apiKey: resendKey,
         from: fromEmail,
-        to: recipients,
+        to: toList,
+        bcc: bccList,
         subject: 'Solicitare nouă de la ' + nume + ' (mariusciprianpop.ro)',
         html,
         replyTo: email
       });
-      results.email = 'ok';
+      results.email = 'ok (to=' + toList.length + ', bcc=' + bccList.length + ')';
     } catch (err) {
       results.email = 'failed: ' + err.message;
       hadFailure = true;
       console.error('[contact] email error:', err);
     }
   } else {
-    results.email = 'skipped (RESEND_API_KEY or NOTIFICATION_RECIPIENTS not set)';
+    results.email = 'skipped (RESEND_API_KEY or EMAIL_TO not set)';
     if (!resendKey) console.warn('[contact] RESEND_API_KEY not set');
-    if (recipients.length === 0) console.warn('[contact] NOTIFICATION_RECIPIENTS empty');
+    if (toList.length === 0) console.warn('[contact] EMAIL_TO empty');
   }
 
   const sheetOk = results.sheet === 'ok';

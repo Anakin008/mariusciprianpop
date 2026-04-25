@@ -39,7 +39,8 @@ Copiază [.env.example](.env.example) → `.env` și completează:
 GOOGLE_SERVICE_ACCOUNT_JSON='{...JSON pe o singura linie...}'
 GOOGLE_SHEET_ID=1AbCd...XyZ
 RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
-NOTIFICATION_RECIPIENTS=marius@example.com,manager@example.com
+EMAIL_TO=destinatar-principal@example.com
+EMAIL_TO_BCC=bcc1@example.com,bcc2@example.com,bcc3@example.com
 FROM_EMAIL=Marius Ciprian Pop <contact@mariusciprianpop.ro>
 ```
 
