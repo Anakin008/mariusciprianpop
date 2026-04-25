@@ -1,0 +1,88 @@
+/* =============================================================
+   mobile-fixes.css
+   Layered ON TOP of webflow.css. Loaded AFTER it in <head>
+   so equal-specificity selectors win via cascade order.
+   Higher-specificity selectors (".hero-section .sound-animation")
+   used where we need to beat existing breakpoint rules.
+
+   Fixes:
+   1. Hero Lottie no longer overlaps title on mobile (after static
+      hero-visual-image was removed; the absolute-positioned Lottie
+      had no parent height to anchor to).
+   2. T&C label spacing tightened on smallest phones (≤479px).
+   3. T&C link contrast on the dark green contact card.
+   ============================================================= */
+
+/* ---------- 1. HERO Lottie on mobile ---------- */
+/* On mobile (≤991px) .hero-section stacks vertically. The right
+   wrap used to be sized by the static image; now we force a
+   sensible flow layout for the Lottie so it sits BELOW the text. */
+
+@media screen and (max-width: 991px) {
+  .hero-section .hero-right-image-wrap {
+    width: 100%;
+    min-height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 0 0 0;
+    position: relative;
+  }
+  .hero-section .hero-right-image-wrap .sound-animation {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    inset: auto;
+    width: 80%;
+    max-width: 320px;
+    height: 80px;
+    margin: 0 auto;
+  }
+  .hero-section .hero-right-image-wrap .sound-animation svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+}
+
+@media screen and (max-width: 479px) {
+  .hero-section .hero-right-image-wrap {
+    min-height: 90px;
+    padding: 12px 0 0 0;
+  }
+  .hero-section .hero-right-image-wrap .sound-animation {
+    width: 90%;
+    max-width: 280px;
+    height: 60px;
+  }
+}
+
+/* ---------- 2. T&C label tightening on small phones ---------- */
+@media screen and (max-width: 479px) {
+  .form-terms-label {
+    gap: 6px !important;
+    font-size: 13px !important;
+    margin: 14px 0 !important;
+    padding: 0 4px;
+  }
+  .form-terms-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+}
+
+/* ---------- 3. T&C link contrast on dark contact card ---------- */
+/* Use brand lime accent so the link stands out against the white
+   label text on the dark green gradient background. */
+.form-terms-label a,
+.form-terms-label a:link,
+.form-terms-label a:visited {
+  color: #c9e265 !important;
+  text-decoration: underline;
+}
+.form-terms-label a:hover {
+  color: #d8ed8a !important;
+}
